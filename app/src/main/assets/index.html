@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTML → APK (Direkt)</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mut:#6b6a64;--bd:#dcdad2;--ac:#2f6f4f;--acx:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--card:#20201d;--tx:#eeede8;--mut:#9a9890;--bd:#3a3935;--ac:#5fb487;--acx:#0f1f17}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,sans-serif;padding:16px}
+main{max-width:560px;margin:0 auto}
+h1{font-size:22px;margin:4px 0}
+p.sub{color:var(--mut);margin:0 0 16px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+.card>label:first-child{margin-top:0}
+input[type=text],input[type=password],select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font-size:16px;font-family:inherit}
+textarea{min-height:140px;font:13px/1.4 ui-monospace,monospace;resize:vertical}
+.row{display:flex;gap:10px}.row>*{flex:1}
+button,a.btn{display:block;text-align:center;text-decoration:none;width:100%;padding:13px;border:0;border-radius:10px;background:var(--ac);color:var(--acx);font-size:16px;font-weight:600;margin-top:8px}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd);font-weight:500}
+button:disabled{opacity:.5}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{margin:0;padding:10px 4px;font-size:14px;background:transparent;color:var(--tx);border:1px solid var(--bd);font-weight:500}
+.tabs button.on{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+.panel{display:none}.panel.on{display:block}
+.files{font-size:13px;color:var(--mut);margin-top:8px;word-break:break-all}
+.chk{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:15px;color:var(--tx)}
+#log{font:13px/1.6 ui-monospace,monospace;margin-top:12px;word-break:break-word}
+#log div{padding:1px 0}.err{color:#c0392b}.ok{color:var(--ac)}
+small{color:var(--mut);display:block;margin-top:6px;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>HTML → APK</h1>
+<p class="sub">HTML'ini dosya, yapıştırma, site linki veya PDF olarak ver; GitHub'da otomatik derlenir ve APK indirme bağlantısı gelir.</p>
+
+<div class="card" style="display:none">
+  <label>GitHub token</label>
+  <input type="password" id="token" placeholder="ghp_..." autocomplete="off" value="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">
+  <label class="chk"><input type="checkbox" id="remember"> Bu cihazda hatırla</label>
+  <small>Gerekli izinler: <b>repo</b> ve <b>workflow</b>. Token yalnızca api.github.com'a gönderilir.</small>
+</div>
+
+<div class="tabs">
+  <button data-m="file" class="on">Dosya</button>
+  <button data-m="paste">Yapıştır</button>
+  <button data-m="link">Link</button>
+  <button data-m="pdf">PDF</button>
+</div>
+
+<div class="card">
+  <div class="panel on" id="p-file">
+    <label>HTML dosyası (+ varsa css/js/resim)</label>
+    <button class="sec" id="pickFiles">Dosya seç</button>
+    <button class="sec" id="pickDir">Klasör seç</button>
+    <input type="file" id="fFiles" multiple hidden>
+    <input type="file" id="fDir" webkitdirectory hidden>
+    <div class="files" id="list">Henüz dosya seçilmedi.</div>
+    <label>Ana HTML</label>
+    <select id="main"></select>
+  </div>
+  <div class="panel" id="p-paste">
+    <label>HTML kodu</label>
+    <textarea id="paste" placeholder="HTML kodunu buraya yapıştır…"></textarea>
+    <button class="sec" id="pasteBtn">Panodan yapıştır</button>
+  </div>
+  <div class="panel" id="p-link">
+    <label>Site adresi</label>
+    <input type="text" id="url" placeholder="https://ornek.com" autocapitalize="none" autocorrect="off">
+    <small>Uygulama bu siteyi açar; internet gerekir ve site güncellenince uygulama da güncel görünür.</small>
+  </div>
+  <div class="panel" id="p-pdf">
+    <label>PDF dosyası</label>
+    <input type="file" id="pdf" accept="application/pdf">
+    <small>PDF tekrar HTML'e çevrilemez. Her sayfa resme dönüştürülüp uygulamada alt alta gösterilir; bağlantılar ve etkileşim çalışmaz. En fazla 100 sayfa.</small>
+  </div>
+</div>
+
+<div class="card">
+  <label>Uygulama adı</label>
+  <input type="text" id="name" value="Uygulamam">
+  <label>Paket adı</label>
+  <input type="text" id="pkg" value="com.example.uygulamam" autocapitalize="none" autocorrect="off">
+  <label>GitHub depo adı (yoksa oluşturulur)</label>
+  <input type="text" id="repo" value="apk-build" autocapitalize="none" autocorrect="off">
+  <div class="row">
+    <div><label>Sürüm</label><input type="text" id="ver" value="1.0"></div>
+    <div><label>Yön</label>
+      <select id="ori"><option value="unspecified">Otomatik</option><option value="portrait">Dikey</option><option value="landscape">Yatay</option></select>
+    </div>
+  </div>
+  <label>İkon (isteğe bağlı, PNG)</label>
+  <input type="file" id="icon" accept="image/png">
+  <label class="chk"><input type="checkbox" id="full"> Tam ekran</label>
+</div>
+
+<button id="go">APK oluştur</button>
+<div id="log"></div>
+<div id="result"></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = 'https://api.github.com';
+const LOCAL = 'file:///android_asset/index.html';
+let files = [], token = '', mode = 'file';
+
+// Paket adı otomatik
+let pkgEdited = false;
+function slugPkg(n){
+  const map = {'ç':'c','ğ':'g','ı':'i','ö':'o','ş':'s','ü':'u','Ç':'c','Ğ':'g','İ':'i','I':'i','Ö':'o','Ş':'s','Ü':'u'};
+  let s = n.replace(/[çğıöşüÇĞİIÖŞÜ]/g, c => map[c]).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!s) s = 'uygulama';
+  if (/^[0-9]/.test(s)) s = 'app' + s;
+  const reserved = ['new','class','int','long','public','private','static','void','default','package','import','this','super','final','switch','case','if','else','for','while','do','try','catch','return','true','false','null'];
+  if (reserved.includes(s)) s = 'app' + s;
+  return s;
+}
+function syncPkg(){ if (!pkgEdited) $('pkg').value = 'com.example.' + slugPkg($('name').value); }
+$('name').addEventListener('input', syncPkg);
+$('pkg').addEventListener('input', () => { pkgEdited = true; });
+syncPkg();
+
+try { const t = localStorage.getItem('gh_token'); if (t) { $('token').value = t; $('remember').checked = true; } } catch(e){}
+
+// Sekmeler
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  mode = b.dataset.m;
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + mode));
+});
+
+function log(t, cls, replaceLast){
+  const l = $('log');
+  if (replaceLast && l.lastChild) { l.lastChild.textContent = t; l.lastChild.className = cls||''; return; }
+  const d = document.createElement('div'); d.textContent = t; d.className = cls||''; l.appendChild(d);
+}
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,"\\'");
+const jstr = s => s.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function b64(data){
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function gh(path, opt = {}){
+  const r = await fetch(API + path, {
+    ...opt,
+    headers: {'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'},
+    body: opt.body ? JSON.stringify(opt.body) : undefined
+  });
+  let j = null; try { j = await r.json(); } catch(e){}
+  if (!r.ok) { const e = new Error((j && j.message) || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+  return j;
+}
+
+// Dosya modu
+function setFiles(list, fromDir){
+  files = [...list].map(f => {
+    const p = fromDir && f.webkitRelativePath ? f.webkitRelativePath.split('/').slice(1).join('/') : f.name;
+    return {path: p || f.name, file: f};
+  });
+  const htmls = files.filter(x => /\.html?$/i.test(x.path));
+  $('main').innerHTML = '';
+  htmls.forEach(h => { const o = document.createElement('option'); o.value = h.path; o.textContent = h.path; $('main').appendChild(o); });
+  const idx = htmls.find(h => h.path.toLowerCase() === 'index.html'); if (idx) $('main').value = idx.path;
+  $('list').textContent = files.length ? files.length + ' dosya: ' + files.slice(0,6).map(x=>x.path).join(', ') + (files.length>6?' …':'') : 'Henüz dosya seçilmedi.';
+}
+$('pickFiles').onclick = () => $('fFiles').click();
+$('pickDir').onclick = () => $('fDir').click();
+$('fFiles').onchange = e => setFiles(e.target.files, false);
+$('fDir').onchange = e => setFiles(e.target.files, true);
+
+// Yapıştır modu
+$('pasteBtn').onclick = async () => {
+  try { $('paste').value = await navigator.clipboard.readText(); }
+  catch(e){ log('Panoya erişilemedi; kutuya basılı tutup yapıştır.', 'err'); }
+};
+
+// PDF modu
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.onload = res;
+    s.onerror = () => rej(new Error('pdf.js yüklenemedi (internet bağlantısını kontrol et).'));
+    document.head.appendChild(s);
+  });
+}
+async function pdfToAssets(file){
+  const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  log('PDF okuyucu yükleniyor…');
+  if (!window.pdfjsLib) await loadScript(base + 'pdf.min.js');
+  const wsrc = await (await fetch(base + 'pdf.worker.min.js')).text();
+  pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([wsrc], {type:'text/javascript'}));
+  const pdf = await pdfjsLib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
+  const n = pdf.numPages;
+  if (n > 100) throw new Error('PDF ' + n + ' sayfa; en fazla 100 sayfa destekleniyor.');
+  const assets = [], imgs = [];
+  for (let p = 1; p <= n; p++) {
+    log(`PDF sayfası ${p}/${n}`, '', p > 1);
+    const page = await pdf.getPage(p);
+    const w0 = page.getViewport({scale:1}).width;
+    const vp = page.getViewport({scale: Math.min(3, 1400 / w0)});
+    const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({canvasContext: ctx, viewport: vp}).promise;
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    const path = 'pages/p' + String(p).padStart(3, '0') + '.jpg';
+    assets.push({path, content: await blob.arrayBuffer()});
+    imgs.push(`<img src="${path}">`);
+    c.width = 0; c.height = 0;
+  }
+  log('PDF sayfaları hazır', 'ok', true);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#333}img{display:block;width:100%;height:auto;margin:0 0 4px}</style></head><body>${imgs.join('')}</body></html>`;
+  assets.push({path:'index.html', content: html});
+  return assets;
+}
+
+// Girdiyi topla
+async function collectInput(){
+  if (mode === 'file') {
+    const main = $('main').value;
+    if (!files.length || !main) throw new Error('HTML dosyası seçilmedi.');
+    const assets = [];
+    for (const f of files) {
+      if (f.path === main) assets.push({path:'index.html', content: await f.file.arrayBuffer()});
+      else if (f.path !== 'index.html') assets.push({path:f.path, content: await f.file.arrayBuffer()});
+    }
+    return {assets, startUrl: LOCAL};
+  }
+  if (mode === 'paste') {
+    const t = $('paste').value;
+    if (!t.trim()) throw new Error('HTML kodu yapıştırılmadı.');
+    return {assets:[{path:'index.html', content:t}], startUrl: LOCAL};
+  }
+  if (mode === 'link') {
+    let u = $('url').value.trim();
+    if (!u) throw new Error('Site adresi girilmedi.');
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try { new URL(u); } catch(e){ throw new Error('Site adresi geçersiz.'); }
+    return {assets:[], startUrl: u};
+  }
+  const f = $('pdf').files[0];
+  if (!f) throw new Error('PDF seçilmedi.');
+  return {assets: await pdfToAssets(f), startUrl: LOCAL};
+}
+
+function projectFiles(o){
+  const out = [];
+  const add = (path, content) => out.push({path, content});
+  add('settings.gradle', `pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "app"
+include ':app'
+`);
+  add('build.gradle', `plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
+`);
+  add('gradle.properties', 'org.gradle.jvmargs=-Xmx2g\nandroid.useAndroidX=false\n');
+  add('app/build.gradle', `plugins {
+    id 'com.android.application'
+}
+android {
+    namespace '${o.pkg}'
+    compileSdk 34
+    defaultConfig {
+        applicationId '${o.pkg}'
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName '${o.ver.replace(/'/g,'')}'
+    }
+}
+`);
+  const icon = o.iconFile ? '@drawable/ic_launcher' : '@android:drawable/sym_def_app_icon';
+  const theme = o.full ? '@android:style/Theme.Material.NoActionBar.Fullscreen' : '@android:style/Theme.Material.Light.NoActionBar';
+  add('app/src/main/AndroidManifest.xml', `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application
+        android:label="${esc(o.name)}"
+        android:icon="${icon}"
+        android:usesCleartextTraffic="true"
+        android:theme="${theme}">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="${o.ori}"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+`);
+  add('app/src/main/java/' + o.pkg.replace(/\./g,'/') + '/MainActivity.java', `package ${o.pkg};
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+public class MainActivity extends Activity {
+    private WebView web;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        web = new WebView(this);
+        setContentView(web);
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setAllowFileAccess(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        web.setWebViewClient(new WebViewClient());
+        web.setWebChromeClient(new WebChromeClient());
+        web.loadUrl("${jstr(o.startUrl)}");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (web.canGoBack()) web.goBack(); else super.onBackPressed();
+    }
+}
+`);
+  for (const a of o.assets) add('app/src/main/assets/' + a.path, a.content);
+  if (o.iconBuf) add('app/src/main/res/drawable/ic_launcher.png', o.iconBuf);
+  add('.github/workflows/build.yml', `name: Build APK
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - run: gradle assembleDebug
+      - name: Release
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: gh release create "build-\${{ github.run_number }}" app/build/outputs/apk/debug/app-debug.apk --title "APK \${{ github.run_number }}" --notes "Debug APK"
+`);
+  return out;
+}
+
+$('go').onclick = async () => {
+  $('log').innerHTML = ''; $('result').innerHTML = '';
+  token = $('token').value.trim();
+  const pkg = $('pkg').value.trim();
+  const rname = $('repo').value.trim().replace(/[^\w.-]+/g,'-') || 'apk-build';
+  if (!token) return log('Token gerekli.', 'err');
+  if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(pkg)) return log('Paket adı geçersiz (örn. com.firma.uygulama).', 'err');
+  try { if ($('remember').checked) localStorage.setItem('gh_token', token); else localStorage.removeItem('gh_token'); } catch(e){}
+
+  $('go').disabled = true;
+  try {
+    const input = await collectInput();
+    const iconFile = $('icon').files[0];
+    const list = projectFiles({
+      pkg, name: $('name').value.trim() || 'Uygulama', ver: $('ver').value.trim() || '1.0',
+      ori: $('ori').value, full: $('full').checked, assets: input.assets, startUrl: input.startUrl,
+      iconBuf: iconFile ? await iconFile.arrayBuffer() : null, iconFile
+    });
+
+    log('Hesap doğrulanıyor…');
+    const me = await gh('/user'); const owner = me.login;
+    log('Hesap: ' + owner, 'ok');
+
+    log('Depo hazırlanıyor…');
+    let repo;
+    try { repo = await gh(`/repos/${owner}/${rname}`); }
+    catch(e){
+      if (e.status !== 404) throw e;
+      repo = await gh('/user/repos', {method:'POST', body:{name:rname, private:true, auto_init:true, description:'APK build'}});
+    }
+    const branch = repo.default_branch || 'main';
+    log('Depo: ' + owner + '/' + rname, 'ok');
+
+    let baseSha = null;
+    for (let i = 0; i < 10 && !baseSha; i++) {
+      try { baseSha = (await gh(`/repos/${owner}/${rname}/git/ref/heads/${branch}`)).object.sha; }
+      catch(e){ await sleep(2000); }
+    }
+    if (!baseSha) throw new Error('Depo dalı bulunamadı.');
+
+    const tree = [];
+    for (let i = 0; i < list.length; i++) {
+      log(`Yükleniyor ${i+1}/${list.length}`, '', i > 0);
+      const b = await gh(`/repos/${owner}/${rname}/git/blobs`, {method:'POST', body:{content:b64(list[i].content), encoding:'base64'}});
+      tree.push({path:list[i].path, mode:'100644', type:'blob', sha:b.sha});
+    }
+    log('Yükleme tamam', 'ok', true);
+
+    const baseCommit = await gh(`/repos/${owner}/${rname}/git/commits/${baseSha}`);
+    const newTree = await gh(`/repos/${owner}/${rname}/git/trees`, {method:'POST', body:{base_tree: baseCommit.tree.sha, tree}});
+    const commit = await gh(`/repos/${owner}/${rname}/git/commits`, {method:'POST', body:{message:'APK build', tree:newTree.sha, parents:[baseSha]}});
+    await gh(`/repos/${owner}/${rname}/git/refs/heads/${branch}`, {method:'PATCH', body:{sha:commit.sha, force:true}});
+    log('Dosyalar gönderildi. Derleme başlıyor…', 'ok');
+
+    log('Derleme bekleniyor…');
+    let run = null;
+    for (let i = 0; i < 80; i++) {
+      await sleep(8000);
+      const r = await gh(`/repos/${owner}/${rname}/actions/runs?head_sha=${commit.sha}`);
+      run = r.workflow_runs && r.workflow_runs[0];
+      if (run) {
+        log(`Derleme durumu: ${run.status} (${(i+1)*8} sn)`, '', true);
+        if (run.status === 'completed') break;
+      } else log(`Derleme sıraya alınıyor… (${(i+1)*8} sn)`, '', true);
+    }
+    if (!run || run.status !== 'completed') throw new Error('Derleme zaman aşımına uğradı. GitHub Actions sekmesinden takip et.');
+    if (run.conclusion !== 'success') {
+      $('result').innerHTML = `<a class="btn" target="_blank" rel="noopener" href="${run.html_url}">Hata kaydını aç</a>`;
+      throw new Error('Derleme başarısız: ' + run.conclusion);
+    }
+    log('Derleme başarılı!', 'ok', true);
+
+    const rel = await gh(`/repos/${owner}/${rname}/releases/latest`);
+    const apk = (rel.assets || []).find(a => a.name.endsWith('.apk'));
+    if (!apk) throw new Error('APK dosyası sürümde bulunamadı.');
+    $('result').innerHTML = `<a class="btn" href="${apk.browser_download_url}">APK'yı indir</a><small style="text-align:center">Özel depo ise GitHub'da giriş yapmış olman gerekir. APK debug imzalıdır.</small>`;
+  } catch(e){
+    log('Hata: ' + e.message, 'err');
+  }
+  $('go').disabled = false;
+};
+</script>
+</body>
+</html>
