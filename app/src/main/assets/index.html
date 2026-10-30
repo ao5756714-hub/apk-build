@@ -37,10 +37,10 @@ small{color:var(--mut);display:block;margin-top:6px;font-size:12px}
 <h1>HTML → APK</h1>
 <p class="sub">HTML'ini dosya, yapıştırma, site linki veya PDF olarak ver; GitHub'da otomatik derlenir ve APK indirme bağlantısı gelir.</p>
 
-<div class="card" style="display:none">
+<div class="card">
   <label>GitHub token</label>
-  <input type="password" id="token" placeholder="ghp_..." autocomplete="off" value="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">
-  <label class="chk"><input type="checkbox" id="remember"> Bu cihazda hatırla</label>
+  <input type="password" id="token" placeholder="ghp_..." autocomplete="off">
+  <label class="chk"><input type="checkbox" id="remember" checked> Bu cihazda hatırla</label>
   <small>Gerekli izinler: <b>repo</b> ve <b>workflow</b>. Token yalnızca api.github.com'a gönderilir.</small>
 </div>
 
@@ -86,6 +86,7 @@ small{color:var(--mut);display:block;margin-top:6px;font-size:12px}
   <input type="text" id="pkg" value="com.example.uygulamam" autocapitalize="none" autocorrect="off">
   <label>GitHub depo adı (yoksa oluşturulur)</label>
   <input type="text" id="repo" value="apk-build" autocapitalize="none" autocorrect="off">
+  <label class="chk"><input type="checkbox" id="pub" checked> Depo herkese açık olsun (APK bağlantısı giriş istemeden açılır)</label>
   <div class="row">
     <div><label>Sürüm</label><input type="text" id="ver" value="1.0"></div>
     <div><label>Yön</label>
@@ -220,11 +221,15 @@ async function pdfToAssets(file){
 }
 
 // Girdiyi topla
+function checkSecret(t){
+  if (/gh[pousr]_[A-Za-z0-9]{30,}/.test(t)) throw new Error("Seçtiğin dosyanın içinde GitHub token'ı var. Herkese açık depoya yüklenirse GitHub token'ı otomatik iptal eder; token'sız bir dosya seç.");
+}
 async function collectInput(){
   if (mode === 'file') {
     const main = $('main').value;
     if (!files.length || !main) throw new Error('HTML dosyası seçilmedi.');
     const assets = [];
+    for (const f of files) if (/\.(html?|js)$/i.test(f.path)) checkSecret(await f.file.text());
     for (const f of files) {
       if (f.path === main) assets.push({path:'index.html', content: await f.file.arrayBuffer()});
       else if (f.path !== 'index.html') assets.push({path:f.path, content: await f.file.arrayBuffer()});
@@ -234,6 +239,7 @@ async function collectInput(){
   if (mode === 'paste') {
     const t = $('paste').value;
     if (!t.trim()) throw new Error('HTML kodu yapıştırılmadı.');
+    checkSecret(t);
     return {assets:[{path:'index.html', content:t}], startUrl: LOCAL};
   }
   if (mode === 'link') {
@@ -393,9 +399,13 @@ $('go').onclick = async () => {
     try { repo = await gh(`/repos/${owner}/${rname}`); }
     catch(e){
       if (e.status !== 404) throw e;
-      repo = await gh('/user/repos', {method:'POST', body:{name:rname, private:true, auto_init:true, description:'APK build'}});
+      repo = await gh('/user/repos', {method:'POST', body:{name:rname, private:!$('pub').checked, auto_init:true, description:'APK build'}});
     }
     const branch = repo.default_branch || 'main';
+    if ($('pub').checked && repo.private) {
+      await gh(`/repos/${owner}/${rname}`, {method:'PATCH', body:{private:false}});
+      log('Depo herkese açık yapıldı.', 'ok');
+    }
     log('Depo: ' + owner + '/' + rname, 'ok');
 
     let baseSha = null;
@@ -440,7 +450,8 @@ $('go').onclick = async () => {
     const rel = await gh(`/repos/${owner}/${rname}/releases/latest`);
     const apk = (rel.assets || []).find(a => a.name.endsWith('.apk'));
     if (!apk) throw new Error('APK dosyası sürümde bulunamadı.');
-    $('result').innerHTML = `<a class="btn" href="${apk.browser_download_url}">APK'yı indir</a><small style="text-align:center">Özel depo ise GitHub'da giriş yapmış olman gerekir. APK debug imzalıdır.</small>`;
+    $('result').innerHTML = `<a class="btn" href="${apk.browser_download_url}">APK'yı indir</a><button class="sec" id="copyLink">Bağlantıyı kopyala (Chrome'da aç)</button><small style="text-align:center">Depo özelse GitHub'da giriş yapmış olman gerekir. APK debug imzalıdır.</small>`;
+    $('copyLink').onclick = async () => { try { await navigator.clipboard.writeText(apk.browser_download_url); $('copyLink').textContent = 'Kopyalandı'; } catch(e){ $('copyLink').textContent = apk.browser_download_url; } };
   } catch(e){
     log('Hata: ' + e.message, 'err');
   }
