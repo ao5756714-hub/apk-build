@@ -24,7 +24,6 @@ button:disabled{opacity:.5}
 .tabs{display:flex;gap:6px;margin-bottom:14px}
 .tabs button{margin:0;padding:10px 4px;font-size:14px;background:transparent;color:var(--tx);border:1px solid var(--bd);font-weight:500}
 .tabs button.on{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
-.vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .panel{display:none}.panel.on{display:block}
 .files{font-size:13px;color:var(--mut);margin-top:8px;word-break:break-all}
 .chk{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:15px;color:var(--tx)}
@@ -57,8 +56,8 @@ small{color:var(--mut);display:block;margin-top:6px;font-size:12px}
     <label>HTML dosyası (+ varsa css/js/resim)</label>
     <button class="sec" id="pickFiles">Dosya seç</button>
     <button class="sec" id="pickDir">Klasör seç</button>
-    <input type="file" id="fFiles" multiple class="vh">
-    <input type="file" id="fDir" webkitdirectory class="vh">
+    <input type="file" id="fFiles" multiple hidden>
+    <input type="file" id="fDir" webkitdirectory hidden>
     <div class="files" id="list">Henüz dosya seçilmedi.</div>
     <label>Ana HTML</label>
     <select id="main"></select>
@@ -172,7 +171,6 @@ function setFiles(list, fromDir){
   const idx = htmls.find(h => h.path.toLowerCase() === 'index.html'); if (idx) $('main').value = idx.path;
   $('list').textContent = files.length ? files.length + ' dosya: ' + files.slice(0,6).map(x=>x.path).join(', ') + (files.length>6?' …':'') : 'Henüz dosya seçilmedi.';
 }
-if (/; wv\)/.test(navigator.userAgent)) $('pickDir').style.display = 'none';
 $('pickFiles').onclick = () => $('fFiles').click();
 $('pickDir').onclick = () => $('fDir').click();
 $('fFiles').onchange = e => setFiles(e.target.files, false);
@@ -293,16 +291,6 @@ android {
   add('app/src/main/AndroidManifest.xml', `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.GET_CONTENT" />
-            <data android:mimeType="*/*" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
-    </queries>
     <application
         android:label="${esc(o.name)}"
         android:icon="${icon}"
@@ -324,21 +312,14 @@ android {
   add('app/src/main/java/' + o.pkg.replace(/\./g,'/') + '/MainActivity.java', `package ${o.pkg};
 
 import android.app.Activity;
-import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
-import android.webkit.DownloadListener;
-import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
-    private static final boolean LOCAL = ${o.startUrl === LOCAL};
-    private static final int FILE_REQ = 1001;
     private WebView web;
-    private ValueCallback<Uri[]> filePathCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -350,73 +331,9 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        web.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (LOCAL && (url.startsWith("http://") || url.startsWith("https://"))) {
-                    openExternal(url);
-                    return true;
-                }
-                return false;
-            }
-        });
-        web.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams params) {
-                if (filePathCallback != null) filePathCallback.onReceiveValue(null);
-                filePathCallback = cb;
-                try {
-                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                    i.addCategory(Intent.CATEGORY_OPENABLE);
-                    i.setType("*/*");
-                    String[] acc = params.getAcceptTypes();
-                    java.util.ArrayList<String> mimes = new java.util.ArrayList<String>();
-                    boolean any = false;
-                    if (acc != null) {
-                        for (String a : acc) {
-                            if (a == null || a.trim().length() == 0) { any = true; continue; }
-                            a = a.trim();
-                            if (a.indexOf('/') > 0) mimes.add(a);
-                        }
-                    }
-                    if (!any && mimes.size() > 0) {
-                        if (mimes.size() == 1) i.setType(mimes.get(0));
-                        else i.putExtra(Intent.EXTRA_MIME_TYPES, mimes.toArray(new String[0]));
-                    }
-                    if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
-                        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-                    }
-                    startActivityForResult(Intent.createChooser(i, null), FILE_REQ);
-                } catch (Exception e) {
-                    filePathCallback = null;
-                    return false;
-                }
-                return true;
-            }
-        });
-        web.setDownloadListener(new DownloadListener() {
-            @Override
-            public void onDownloadStart(String url, String ua, String cd, String mime, long len) {
-                openExternal(url);
-            }
-        });
+        web.setWebViewClient(new WebViewClient());
+        web.setWebChromeClient(new WebChromeClient());
         web.loadUrl("${jstr(o.startUrl)}");
-    }
-
-    private void openExternal(String url) {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-        } catch (Exception e) { }
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == FILE_REQ && filePathCallback != null) {
-            filePathCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
-            filePathCallback = null;
-            return;
-        }
-        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override
